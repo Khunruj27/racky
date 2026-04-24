@@ -53,7 +53,7 @@ export default async function AlbumsPage() {
 
   const storageLimitBytes =
     currentSubscription?.plan?.storage_limit_bytes ||
-    5 * 1024 * 1024 * 1024
+    3 * 1024 * 1024 * 1024
 
   const usagePercent = clampPercent(
     storageLimitBytes > 0 ? (totalBytes / storageLimitBytes) * 100 : 0

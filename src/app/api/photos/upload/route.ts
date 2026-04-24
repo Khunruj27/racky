@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
-const FREE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024
+const FREE_LIMIT_BYTES = 3 * 1024 * 1024 * 1024
 
 async function getStorageUsageAndLimit(userId: string) {
   const supabase = await createServerSupabaseClient()

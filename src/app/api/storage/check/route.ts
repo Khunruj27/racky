@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     const limitBytes =
       currentSubscription?.plan?.storage_limit_bytes ||
-      5 * 1024 * 1024 * 1024
+      3 * 1024 * 1024 * 1024
 
     const willUseBytes = usedBytes + uploadSizeBytes
     const remainingBytes = Math.max(limitBytes - usedBytes, 0)
