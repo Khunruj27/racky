@@ -43,7 +43,7 @@ export default async function AlbumsPage() {
     storageRows?.reduce((sum, row) => sum + Number(row.file_size_bytes || 0), 0) || 0
 
   const storageLimitBytes =
-    currentSubscription?.plan?.storage_limit_bytes || 10 * 1024 * 1024 * 1024
+    currentSubscription?.plan?.storage_limit_bytes || 5 * 1024 * 1024 * 1024
 
   const usagePercent = clampPercent((totalBytes / storageLimitBytes) * 100)
 
