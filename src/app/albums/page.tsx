@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import CreateAlbumForm from '@/components/create-album-form'
 import LogoutButton from '@/components/logout-button'
 import { formatBytes, clampPercent } from '@/lib/format-bytes'
+import ManageBillingButton from '@/components/manage-billing-button'
 
 export default async function AlbumsPage() {
   const supabase = await createServerSupabaseClient()
@@ -119,12 +120,22 @@ export default async function AlbumsPage() {
                 </span>
               </div>
 
-              <Link
-                href="/pricing"
-                className="mt-4 inline-flex rounded-2xl bg-blue-600 px-4 py-3 text-sm text-white"
-              >
-                Upgrade Plan
-              </Link>
+               {/* Actions */}
+
+              <div className="mt-4 flex gap-2">
+
+                <Link
+
+                  href="/pricing"
+
+                  className="rounded-full bg-blue-600 px-4 py-2 text-sm text-white"
+                >
+                  Upgrade Plan
+                </Link>
+
+                <ManageBillingButton />
+
+              </div>
             </div>
           </div>
 
