@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
     const planId = String(body.planId || '').trim()
 
     if (!planId) {
-      return NextResponse.json({ error: 'planId is required' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'planId is required' },
+        { status: 400 }
+      )
     }
 
     const { data: plan, error: planError } = await supabase
@@ -39,23 +42,55 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+    const siteUrl =
+      process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
+    // 🔥 สำคัญ: สร้าง/หา customer ก่อน
+    let customerId: string | null = null
+
+    const { data: existingSub } = await supabase
+      .from('subscriptions')
+      .select('stripe_customer_id')
+      .eq('user_id', user.id)
+      .not('stripe_customer_id', 'is', null)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingSub?.stripe_customer_id) {
+      customerId = existingSub.stripe_customer_id
+    } else {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: {
+          user_id: user.id,
+        },
+      })
+
+      customerId = customer.id
+    }
+
+    // 🔥 สร้าง checkout session
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      customer_email: user.email,
+
+      customer: customerId, // 🔥 ใช้ customer แทน email
+
       line_items: [
         {
           price: plan.stripe_price_id,
           quantity: 1,
         },
       ],
-      success_url: `${siteUrl}/pricing?success=1&session_id={CHECKOUT_SESSION_ID}`,
+
+      success_url: `${siteUrl}/pricing?success=1`,
       cancel_url: `${siteUrl}/pricing?canceled=1`,
+
+      // 🔥 metadata (ใช้ใน webhook)
       metadata: {
         user_id: user.id,
         plan_id: plan.id,
       },
+
       subscription_data: {
         metadata: {
           user_id: user.id,
@@ -64,10 +99,21 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    if (!session.url) {
+      return NextResponse.json(
+        { error: 'Failed to create checkout session' },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({ url: session.url })
   } catch (error) {
+    console.error('Stripe checkout error:', error)
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Checkout failed' },
+      {
+        error: error instanceof Error ? error.message : 'Checkout failed',
+      },
       { status: 500 }
     )
   }
