@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { stripe } from '@/lib/stripe'
 
+export const runtime = 'nodejs'
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient()
@@ -14,8 +16,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
-    const planId = String(body.planId || '').trim()
+    const body = await req.json().catch(() => null)
+    const planId = String(body?.planId || '').trim()
 
     if (!planId) {
       return NextResponse.json(
@@ -45,7 +47,6 @@ export async function POST(req: NextRequest) {
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
-    // 🔥 สำคัญ: สร้าง/หา customer ก่อน
     let customerId: string | null = null
 
     const { data: existingSub } = await supabase
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (existingSub?.stripe_customer_id) {
-      customerId = existingSub.stripe_customer_id
+      customerId = String(existingSub.stripe_customer_id)
     } else {
       const customer = await stripe.customers.create({
         email: user.email,
@@ -69,32 +70,30 @@ export async function POST(req: NextRequest) {
       customerId = customer.id
     }
 
-    // 🔥 สร้าง checkout session
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
 
-      customer: customerId, // 🔥 ใช้ customer แทน email
+      ...(customerId ? { customer: customerId } : {}),
 
       line_items: [
         {
-          price: plan.stripe_price_id,
+          price: String(plan.stripe_price_id),
           quantity: 1,
         },
       ],
 
-      success_url: `${siteUrl}/pricing?success=1`,
+      success_url: `${siteUrl}/pricing?success=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/pricing?canceled=1`,
 
-      // 🔥 metadata (ใช้ใน webhook)
       metadata: {
         user_id: user.id,
-        plan_id: plan.id,
+        plan_id: String(plan.id),
       },
 
       subscription_data: {
         metadata: {
           user_id: user.id,
-          plan_id: plan.id,
+          plan_id: String(plan.id),
         },
       },
     })
