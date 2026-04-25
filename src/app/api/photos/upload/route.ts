@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { getUserStoragePlan } from '@/lib/get-user-storage-plan'
 
-export const runtime = 'nodejs'
+export const runtime = 'nodejs' // 🔥 กัน edge runtime พัง
+
+const FREE_LIMIT_BYTES = 3 * 1024 * 1024 * 1024
 
 async function getStorageUsageAndLimit(userId: string) {
   const supabase = await createServerSupabaseClient()
 
-  const { data: storageRowsData, error: storageError } = await supabase
+  const { data: storageRows = [], error: storageError } = await supabase
     .from('photos')
     .select('file_size_bytes')
     .eq('owner_id', userId)
@@ -16,18 +17,31 @@ async function getStorageUsageAndLimit(userId: string) {
     throw new Error(storageError.message)
   }
 
-  const storageRows = storageRowsData ?? []
+  const usedBytes = (storageRows || []).reduce(
+    (sum, row: any) => sum + Number(row?.file_size_bytes || 0),
+    0
+  )
 
-  const usedBytes = storageRows.reduce((sum, row) => {
-    return sum + Number(row.file_size_bytes || 0)
-  }, 0)
+  const { data: currentSubscription } = await supabase
+    .from('subscriptions')
+    .select(`
+      id,
+      status,
+      plan:plans(storage_limit_bytes)
+    `)
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  const { storageLimitBytes } = await getUserStoragePlan(userId)
+  const plan = Array.isArray(currentSubscription?.plan)
+    ? currentSubscription?.plan[0]
+    : currentSubscription?.plan
 
-  return {
-    usedBytes,
-    limitBytes: Number(storageLimitBytes || 3 * 1024 * 1024 * 1024),
-  }
+  const limitBytes = Number(plan?.storage_limit_bytes || FREE_LIMIT_BYTES)
+
+  return { usedBytes, limitBytes }
 }
 
 export async function POST(req: NextRequest) {
@@ -46,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     const file = formData.get('file') as File | null
     const albumId = String(formData.get('albumId') || '').trim()
-    const size = String(formData.get('size') || 'original').trim().toLowerCase()
+    const size = String(formData.get('size') || 'original').toLowerCase()
     const categoryIdRaw = String(formData.get('categoryId') || '').trim()
     const categoryId = categoryIdRaw || null
     const isCover = String(formData.get('isCover') || '') === 'true'
@@ -58,13 +72,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const fileNameLower = file.name.toLowerCase()
-
     const isImage =
       file.type.startsWith('image/') ||
-      fileNameLower.endsWith('.jpg') ||
-      fileNameLower.endsWith('.jpeg') ||
-      fileNameLower.endsWith('.png')
+      file.name.toLowerCase().endsWith('.jpg') ||
+      file.name.toLowerCase().endsWith('.jpeg') ||
+      file.name.toLowerCase().endsWith('.png')
 
     if (!isImage) {
       return NextResponse.json(
@@ -84,40 +96,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Album not found' }, { status: 404 })
     }
 
+    // 🔥 generate filename
     const baseName = file.name.replace(/\.[^/.]+$/, '')
     const safeBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, '-')
-    const fileName = `${Date.now()}-${safeBaseName || 'photo'}.jpg`
+    const fileName = `${Date.now()}-${safeBaseName}.jpg`
 
+    // 🔥 convert file -> buffer
     const arrayBuffer = await file.arrayBuffer()
     let buffer = Buffer.from(new Uint8Array(arrayBuffer))
 
-    if (!isCover && size !== 'original') {
+    // 🔥 resize (non-cover only)
+    if (!isCover) {
       const sharpModule = await import('sharp')
       const sharp = sharpModule.default
 
-      let width = 2000
+      let width: number | null = null
 
+      if (size === 'sd') width = 2000
       if (size === 'hd') width = 3000
       if (size === 'uhd') width = 4000
-      if (size === 'sd') width = 2000
 
-      buffer = await sharp(buffer)
-        .rotate()
-        .resize({ width, withoutEnlargement: true })
-        .jpeg({ quality: 85 })
-        .toBuffer()
-    } else {
-      const sharpModule = await import('sharp')
-      const sharp = sharpModule.default
+      let processed: Buffer
 
-      buffer = await sharp(buffer)
-        .rotate()
-        .jpeg({ quality: 90 })
-        .toBuffer()
+      if (width) {
+        processed = await sharp(buffer)
+          .rotate()
+          .resize({ width, withoutEnlargement: true })
+          .jpeg({ quality: 85 })
+          .toBuffer()
+      } else {
+        processed = await sharp(buffer)
+          .rotate()
+          .jpeg({ quality: 90 })
+          .toBuffer()
+      }
+
+      // 🔥 FIX TYPE ERROR (สำคัญมาก)
+      buffer = Buffer.from(processed)
     }
 
     const fileSizeBytes = buffer.length
 
+    // 🔥 check storage limit
     if (!isCover) {
       const { usedBytes, limitBytes } = await getStorageUsageAndLimit(user.id)
 
@@ -155,23 +175,18 @@ export async function POST(req: NextRequest) {
 
     const publicUrl = publicUrlData.publicUrl
 
+    // 🔥 set cover
     if (isCover) {
-      const { error: coverError } = await supabase
+      await supabase
         .from('albums')
         .update({ cover_url: publicUrl })
         .eq('id', albumId)
         .eq('owner_id', user.id)
 
-      if (coverError) {
-        return NextResponse.json({ error: coverError.message }, { status: 500 })
-      }
-
-      return NextResponse.json({
-        success: true,
-        coverUrl: publicUrl,
-      })
+      return NextResponse.json({ success: true, coverUrl: publicUrl })
     }
 
+    // 🔥 insert photo
     const { data: insertedPhoto, error: insertError } = await supabase
       .from('photos')
       .insert({
@@ -190,19 +205,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
+    // 🔥 auto set cover
     if (!album.cover_url && insertedPhoto?.public_url) {
-      const { error: autoCoverError } = await supabase
+      await supabase
         .from('albums')
         .update({ cover_url: insertedPhoto.public_url })
         .eq('id', albumId)
         .eq('owner_id', user.id)
-
-      if (autoCoverError) {
-        return NextResponse.json(
-          { error: autoCoverError.message },
-          { status: 500 }
-        )
-      }
     }
 
     return NextResponse.json({
@@ -212,7 +221,7 @@ export async function POST(req: NextRequest) {
       fileSizeBytes,
     })
   } catch (error) {
-    console.error('Upload route error:', error)
+    console.error('Upload error:', error)
 
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Upload failed' },
