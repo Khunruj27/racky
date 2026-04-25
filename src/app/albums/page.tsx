@@ -46,12 +46,11 @@ export default async function AlbumsPage() {
     .limit(1)
     .maybeSingle()
 
-  const storageRowsSafe = storageRows ?? []
-
-const totalBytes = storageRowsSafe.reduce(
-  (sum, row) => sum + Number(row.file_size_bytes || 0),
-  0
-)
+  const totalBytes =
+  (storageRows || []).reduce(
+    (sum, row) => sum + Number(row.file_size_bytes || 0),
+    0
+  )
 
   const storageLimitBytes =
     currentSubscription?.plan?.storage_limit_bytes ||
