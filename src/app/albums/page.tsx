@@ -46,15 +46,18 @@ export default async function AlbumsPage() {
     .limit(1)
     .maybeSingle()
 
-  const totalBytes =
-  (storageRows || []).reduce(
+  const currentPlan = Array.isArray(currentSubscription?.plan)
+    ? currentSubscription?.plan[0]
+    : currentSubscription?.plan
+
+  const totalBytes = (storageRows || []).reduce(
     (sum, row) => sum + Number(row.file_size_bytes || 0),
     0
   )
 
-  const storageLimitBytes =
-    currentSubscription?.plan?.storage_limit_bytes ||
-    3 * 1024 * 1024 * 1024
+  const storageLimitBytes = Number(
+    currentPlan?.storage_limit_bytes || 3 * 1024 * 1024 * 1024
+  )
 
   const usagePercent = clampPercent(
     storageLimitBytes > 0 ? (totalBytes / storageLimitBytes) * 100 : 0
@@ -75,7 +78,7 @@ export default async function AlbumsPage() {
   }
 
   const albumCount = albums.length
-  const currentPlanName = currentSubscription?.plan?.name || 'Free'
+  const currentPlanName = currentPlan?.name || 'Free 3GB'
   const hasBillingPortal = Boolean(currentSubscription?.stripe_customer_id)
 
   return (
@@ -104,7 +107,7 @@ export default async function AlbumsPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-bold text-slate-950">
-                  Storage usage
+                  Your Storage
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Current plan: {currentPlanName}
@@ -135,12 +138,22 @@ export default async function AlbumsPage() {
                 </span>
               </div>
 
+              {usagePercent >= 80 ? (
+                <p className="mt-3 text-xs font-medium text-red-500">
+                  ⚠️ Storage almost full — upgrade to avoid upload interruption.
+                </p>
+              ) : usagePercent >= 60 ? (
+                <p className="mt-3 text-xs font-medium text-yellow-600">
+                  You are using a lot of storage.
+                </p>
+              ) : null}
+
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link
                   href="/pricing"
                   className="rounded-full bg-[#3B5BFF] px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
                 >
-                  Upgrade Plan
+                  Upgrade Storage
                 </Link>
 
                 {hasBillingPortal ? <ManageBillingButton /> : null}
