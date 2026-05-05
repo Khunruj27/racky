@@ -38,18 +38,20 @@ export default async function PricingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 pb-24">
-      <div className="mx-auto max-w-md space-y-4">
+    <main className="min-h-screen bg-slate-50 px-4 py-5 pb-24">
+      <div className="mx-auto w-full max-w-[360px] space-y-3">
         <Link
           href="/albums"
-          className="text-xs uppercase tracking-[0.2em] text-slate-400"
+          className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400"
         >
-          ← Back to Albums
+          ‹ Back to Albums
         </Link>
 
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5">
-          <h1 className="text-3xl font-bold text-slate-900">Upgrade Plan</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <h1 className="text-lg font-bold tracking-tight text-slate-900">
+            Upgrade Plan
+          </h1>
+          <p className="mt-1.5 text-xs leading-5 text-slate-500">
             Choose the storage plan that fits your workflow.
           </p>
         </div>
@@ -60,14 +62,14 @@ export default async function PricingPage() {
             currentSubscription={currentSubscription}
           />
         ) : (
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-2xl">
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-xl">
               📦
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-slate-900">
+            <h2 className="mt-3 text-base font-semibold text-slate-900">
               No plans found
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
+            <p className="mt-1.5 text-xs leading-5 text-slate-500">
               Please add plans in the database first, then reload this page.
             </p>
           </div>

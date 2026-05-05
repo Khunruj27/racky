@@ -53,7 +53,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-white px-6 py-10">
       <div className="mx-auto max-w-md pt-16">
-        <h1 className="text-4xl font-bold text-slate-900">Welcome to Racky</h1>
+        <h1 className="text-4xl font-bold text-slate-900">Welcome to Ciiya</h1>
         <p className="mt-3 text-slate-500">
           Sign in to manage your albums and upload photos.
         </p>

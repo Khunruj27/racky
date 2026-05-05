@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import AppIcon from '@/components/app-icon'
 
 type Props = {
   shareToken: string | null
@@ -55,23 +56,32 @@ export default function ShareActions({ shareToken }: Props) {
 
   return (
     <>
-      <div className="flex items-center gap-3">
-        <a
-          href={`/share/${shareToken}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-full bg-blue-50 px-4 py-2 text-sm text-blue-600"
-        >
-          Open Public Link
-        </a>
+      <div className="flex items-center gap-1">
 
         <button
           type="button"
           onClick={() => setShowQR(true)}
-          className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-700"
+          className="p-2 text-sm font-semibold text-slate-500 hover:text-[#2F6BFF]"
         >
-          Show QR
+         <AppIcon
+        name="code"
+        size={24}
+        className="text-[#2F6BFF]"
+      />
         </button>
+         
+         <a
+          href={`/share/${shareToken}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-2 text-sm font-semibold text-slate-500 hover:text-[#2F6BFF]"
+        >
+           <AppIcon
+        name="forward"
+        size={28}
+        className="text-[#2F6BFF]"
+      />
+        </a>
       </div>
 
       {showQR ? (

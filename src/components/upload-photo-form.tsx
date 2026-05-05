@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 type Category = {
   id: string
@@ -10,6 +11,21 @@ type Category = {
 type Props = {
   albumId: string
   categories?: Category[]
+}
+
+type UploadStatus =
+  | 'waiting'
+  | 'uploading'
+  | 'queued'
+  | 'done'
+  | 'error'
+
+type UploadItem = {
+  id: string
+  file: File
+  progress: number
+  status: UploadStatus
+  error?: string
 }
 
 function formatBytes(bytes: number) {
@@ -22,81 +38,157 @@ function formatBytes(bytes: number) {
   return `${gb.toFixed(2)} GB`
 }
 
+function makeItemId(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`
+}
+
 export default function UploadPhotoForm({
   albumId,
   categories = [],
 }: Props) {
-  const [files, setFiles] = useState<File[]>([])
+  const router = useRouter()
+
+  const [items, setItems] = useState<UploadItem[]>([])
+  const [presetFile, setPresetFile] = useState<File | null>(null)
   const [size, setSize] = useState('original')
   const [categoryId, setCategoryId] = useState('')
   const [uploading, setUploading] = useState(false)
-  const [completedCount, setCompletedCount] = useState(0)
   const [currentFileName, setCurrentFileName] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
-  const [upgradePopup, setUpgradePopup] = useState<{
-    type: 'warning' | 'blocked'
-    usagePercent: number
-    planName: string
-    willUseBytes: number
-    limitBytes: number
-  } | null>(null)
 
   const totalSelectedBytes = useMemo(() => {
-    return files.reduce((sum, file) => sum + file.size, 0)
-  }, [files])
+    return items.reduce((sum, item) => sum + item.file.size, 0)
+  }, [items])
 
-  const progress = useMemo(() => {
-    if (!files.length) return 0
-    return Math.round((completedCount / files.length) * 100)
-  }, [completedCount, files.length])
+  const uploadedCount = useMemo(() => {
+    return items.filter(
+      (item) => item.status === 'queued' || item.status === 'done'
+    ).length
+  }, [items])
 
-  async function checkStorageBeforeUpload() {
-    const res = await fetch('/api/storage/check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uploadSizeBytes: totalSelectedBytes }),
-    })
+  const failedCount = useMemo(() => {
+    return items.filter((item) => item.status === 'error').length
+  }, [items])
 
-    const data = await res.json().catch(() => null)
+  const totalProgress = useMemo(() => {
+    if (!items.length) return 0
 
-    if (!res.ok) {
-      if (data?.blocked) {
-        setUpgradePopup({
-          type: 'blocked',
-          usagePercent: data.usagePercent || 100,
-          planName: data.planName || 'Current Plan',
-          willUseBytes: data.willUseBytes || 0,
-          limitBytes: data.limitBytes || 0,
+    const total = items.reduce((sum, item) => {
+      if (item.status === 'queued' || item.status === 'done') return sum + 100
+      return sum + item.progress
+    }, 0)
+
+    return Math.round(total / items.length)
+  }, [items])
+
+  function updateItem(id: string, update: Partial<UploadItem>) {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...update } : item))
+    )
+  }
+
+  function removeItem(id: string) {
+    if (uploading) return
+    setItems((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  function clearCompleted() {
+    if (uploading) return
+
+    setItems((prev) =>
+      prev.filter((item) => item.status !== 'queued' && item.status !== 'done')
+    )
+  }
+
+  function uploadWithProgress(item: UploadItem) {
+    return new Promise<any>((resolve, reject) => {
+      const formData = new FormData()
+
+      formData.append('file', item.file)
+      formData.append('albumId', albumId)
+      formData.append('size', size)
+
+      if (categoryId) {
+        formData.append('categoryId', categoryId)
+      }
+
+      if (presetFile) {
+        formData.append('presetFile', presetFile)
+      }
+
+      const xhr = new XMLHttpRequest()
+
+      xhr.open('POST', '/api/photos/upload')
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return
+
+        const percent = Math.round((event.loaded / event.total) * 100)
+
+        updateItem(item.id, {
+          progress: percent,
+          status: 'uploading',
         })
       }
 
-      throw new Error(data?.error || 'Storage limit check failed')
-    }
+      xhr.onload = () => {
+        const data = (() => {
+          try {
+            return JSON.parse(xhr.responseText)
+          } catch {
+            return null
+          }
+        })()
 
-    if (data?.warning) {
-      setUpgradePopup({
-        type: 'warning',
-        usagePercent: data.usagePercent || 80,
-        planName: data.planName || 'Current Plan',
-        willUseBytes: data.willUseBytes || 0,
-        limitBytes: data.limitBytes || 0,
-      })
-    }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          updateItem(item.id, {
+            progress: 100,
+            status: 'queued',
+            error: undefined,
+          })
 
-    return data
+          resolve(data)
+          return
+        }
+
+        const message = data?.error || `Upload failed for ${item.file.name}`
+
+        updateItem(item.id, {
+          status: 'error',
+          error: message,
+        })
+
+        reject(new Error(message))
+      }
+
+      xhr.onerror = () => {
+        const message = `Upload failed for ${item.file.name}`
+
+        updateItem(item.id, {
+          status: 'error',
+          error: message,
+        })
+
+        reject(new Error(message))
+      }
+
+      xhr.send(formData)
+    })
   }
 
   async function handleUpload() {
     setErrorMsg('')
     setSuccessMsg('')
 
-    if (files.length === 0) {
+    if (items.length === 0) {
       setErrorMsg('Please select at least one JPG file')
       return
     }
 
-    const invalidFile = files.find((file) => {
+    const invalidFile = items.find((item) => {
+      const file = item.file
+
       return !(
         file.type === 'image/jpeg' ||
         file.name.toLowerCase().endsWith('.jpg') ||
@@ -109,61 +201,57 @@ export default function UploadPhotoForm({
       return
     }
 
+    if (presetFile && !presetFile.name.toLowerCase().endsWith('.xmp')) {
+      setErrorMsg('Only .xmp preset file is allowed')
+      return
+    }
+
     try {
       setUploading(true)
-      setCompletedCount(0)
-      setCurrentFileName('Checking storage...')
 
-      await checkStorageBeforeUpload()
+      const uploadItems = items.filter(
+        (item) => item.status === 'waiting' || item.status === 'error'
+      )
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        setCurrentFileName(file.name)
+      for (const item of uploadItems) {
+        setCurrentFileName(item.file.name)
 
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('albumId', albumId)
-        formData.append('size', size)
-
-        if (categoryId) {
-          formData.append('categoryId', categoryId)
-        }
-
-        const res = await fetch('/api/photos/upload', {
-          method: 'POST',
-          body: formData,
+        updateItem(item.id, {
+          progress: 0,
+          status: 'uploading',
+          error: undefined,
         })
 
-        const data = await res.json().catch(() => null)
+        try {
+          const data = await uploadWithProgress(item)
 
-        if (!res.ok) {
-          const message = data?.error || `Upload failed for ${file.name}`
+          if (data?.error?.includes('Storage full')) {
+            window.location.href = '/pricing'
+            return
+          }
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Upload failed'
+
           setErrorMsg(message)
 
           if (message.includes('Storage full')) {
-            setUpgradePopup({
-              type: 'blocked',
-              usagePercent: 100,
-              planName: 'Current Plan',
-              willUseBytes: 0,
-              limitBytes: 0,
-            })
+            window.location.href = '/pricing'
+            return
           }
-
-          return
         }
-
-        setCompletedCount(i + 1)
       }
 
-      setSuccessMsg(`Upload complete: ${files.length} file(s) uploaded`)
-      setFiles([])
-      setCategoryId('')
       setCurrentFileName('')
-      window.location.reload()
+      setSuccessMsg(
+        presetFile
+          ? `Upload queued with preset: ${uploadItems.length} file(s)`
+          : `Upload queued: ${uploadItems.length} file(s)`
+      )
+
+      router.refresh()
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Upload failed'
-      setErrorMsg(message)
+      setErrorMsg(error instanceof Error ? error.message : 'Upload failed')
       setCurrentFileName('')
     } finally {
       setUploading(false)
@@ -171,49 +259,82 @@ export default function UploadPhotoForm({
   }
 
   return (
-    <>
-      <div className="space-y-4 rounded-3xl bg-white p-4 shadow-sm">
-        <div>
-          <h3 className="text-base font-semibold text-slate-900">
-            Upload Photos
-          </h3>
-          <p className="mt-1 text-sm text-slate-500">
-            Upload JPG files and assign a category before sending
-          </p>
-        </div>
+    <div className="space-y-4 rounded-3xl bg-white p-4 shadow-sm">
+      <div className="space-y-2">
+        <label className="text-xs font-semibold text-slate-500">Photos</label>
 
         <input
           type="file"
           multiple
           accept=".jpg,.jpeg,image/jpeg"
           onChange={(e) => {
-            setFiles(Array.from(e.target.files || []))
-            setCompletedCount(0)
+            const selected = Array.from(e.target.files || [])
+
+            const newItems: UploadItem[] = selected.map((file) => ({
+              id: makeItemId(file),
+              file,
+              progress: 0,
+              status: 'waiting',
+            }))
+
+            setItems((prev) => [...prev, ...newItems])
             setCurrentFileName('')
             setErrorMsg('')
             setSuccessMsg('')
-            setUpgradePopup(null)
+
+            e.currentTarget.value = ''
+          }}
+          className="block w-full text-sm text-slate-600"
+          disabled={uploading}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-semibold text-slate-500">
+          Lightroom Preset (.xmp)
+        </label>
+
+        <input
+          type="file"
+          accept=".xmp"
+          onChange={(e) => {
+            const file = e.target.files?.[0] || null
+            setPresetFile(file)
+            setErrorMsg('')
+            setSuccessMsg('')
           }}
           className="block w-full text-sm text-slate-600"
           disabled={uploading}
         />
 
-        <select
-          value={size}
-          onChange={(e) => setSize(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 p-3"
-          disabled={uploading}
-        >
-          <option value="sd">SD (2000px)</option>
-          <option value="hd">HD (3000px)</option>
-          <option value="uhd">UHD (4000px)</option>
-          <option value="original">Original</option>
-        </select>
+        {presetFile ? (
+          <div className="rounded-2xl bg-blue-50 px-3 py-2 text-xs font-medium text-blue-600">
+            Preset selected: {presetFile.name}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">
+            Optional: choose a Lightroom .xmp preset before upload
+          </p>
+        )}
+      </div>
 
+      <select
+        value={size}
+        onChange={(e) => setSize(e.target.value)}
+        className="w-full rounded-xl border border-slate-200 p-3 text-sm"
+        disabled={uploading}
+      >
+        <option value="sd">SD (2000px)</option>
+        <option value="hd">HD (3000px)</option>
+        <option value="uhd">UHD (4000px)</option>
+        <option value="original">Original (original size)</option>
+      </select>
+
+      {categories.length > 0 ? (
         <select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 p-3"
+          className="w-full rounded-xl border border-slate-200 p-3 text-sm"
           disabled={uploading}
         >
           <option value="">No Category</option>
@@ -223,110 +344,131 @@ export default function UploadPhotoForm({
             </option>
           ))}
         </select>
+      ) : null}
 
-        {files.length > 0 ? (
-          <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
-            <div>Selected {files.length} file(s)</div>
-            <div className="mt-1 text-xs text-slate-400">
-              Total size: {formatBytes(totalSelectedBytes)}
-            </div>
+      {items.length > 0 ? (
+        <div className="rounded-2xl bg-slate-50 p-3">
+          <div className="flex items-center justify-between text-sm text-slate-700">
+            <span>Queue {items.length} file(s)</span>
+            <span>{totalProgress}%</span>
           </div>
-        ) : null}
 
-        {(uploading || completedCount > 0) && files.length > 0 ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>
-                {uploading
-                  ? `Uploading ${completedCount}/${files.length}`
-                  : `Uploaded ${completedCount}/${files.length}`}
-              </span>
-              <span>{progress}%</span>
-            </div>
-
-            {currentFileName ? (
-              <p className="truncate text-xs text-slate-400">
-                Current: {currentFileName}
-              </p>
-            ) : null}
-
-            <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
-              <div
-                className="h-full rounded-full bg-blue-600 transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+          <div className="mt-1 text-xs text-slate-400">
+            Total size: {formatBytes(totalSelectedBytes)}
           </div>
-        ) : null}
 
-        {errorMsg ? <p className="text-sm text-red-500">{errorMsg}</p> : null}
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-all duration-300"
+              style={{ width: `${totalProgress}%` }}
+            />
+          </div>
 
-        {successMsg ? (
-          <p className="text-sm text-green-600">{successMsg}</p>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={handleUpload}
-          disabled={uploading}
-          className="w-full rounded-xl bg-blue-600 py-3 text-white disabled:opacity-50"
-        >
-          {uploading ? 'Uploading...' : 'Upload'}
-        </button>
-      </div>
-
-      {upgradePopup ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-[32px] bg-white p-6 shadow-2xl">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-2xl">
-              {upgradePopup.type === 'blocked' ? '🚫' : '⚠️'}
-            </div>
-
-            <h2 className="mt-4 text-center text-xl font-bold text-slate-900">
-              {upgradePopup.type === 'blocked'
-                ? 'Storage is full'
-                : 'Storage almost full'}
-            </h2>
-
-            <p className="mt-2 text-center text-sm leading-6 text-slate-500">
-              Your {upgradePopup.planName} will reach about{' '}
-              <span className="font-semibold text-slate-900">
-                {upgradePopup.usagePercent}%
-              </span>{' '}
-              after this upload.
-            </p>
-
-            {upgradePopup.limitBytes > 0 ? (
-              <p className="mt-3 text-center text-xs text-slate-400">
-                {formatBytes(upgradePopup.willUseBytes)} /{' '}
-                {formatBytes(upgradePopup.limitBytes)}
-              </p>
-            ) : null}
-
-            <div className="mt-5 flex gap-2">
-              {upgradePopup.type === 'warning' ? (
-                <button
-                  type="button"
-                  onClick={() => setUpgradePopup(null)}
-                  className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-700"
-                >
-                  Continue
-                </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = '/pricing'
-                }}
-                className="flex-1 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white"
-              >
-                Upgrade
-              </button>
-            </div>
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+            <span>
+              Uploaded {uploadedCount}/{items.length}
+            </span>
+            <span>{failedCount > 0 ? `Failed ${failedCount}` : 'Ready'}</span>
           </div>
         </div>
       ) : null}
-    </>
+
+      {items.length > 0 ? (
+        <div className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border border-slate-100 p-2">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-slate-700">
+                    {item.file.name}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {formatBytes(item.file.size)}
+                  </p>
+                </div>
+
+                {!uploading ? (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(item.id)}
+                    className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-500"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    item.status === 'error' ? 'bg-red-500' : 'bg-blue-600'
+                  }`}
+                  style={{ width: `${item.progress}%` }}
+                />
+              </div>
+
+              <div className="mt-1 flex items-center justify-between text-[11px]">
+                <span
+                  className={
+                    item.status === 'error'
+                      ? 'text-red-500'
+                      : item.status === 'queued' || item.status === 'done'
+                      ? 'text-green-600'
+                      : 'text-slate-500'
+                  }
+                >
+                  {item.status === 'waiting' && 'Waiting'}
+                  {item.status === 'uploading' && `Uploading ${item.progress}%`}
+                  {item.status === 'queued' && 'Uploaded • Processing preview'}
+                  {item.status === 'done' && 'Done'}
+                  {item.status === 'error' && (item.error || 'Error')}
+                </span>
+
+                <span className="text-slate-400">{item.progress}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {currentFileName ? (
+        <p className="truncate text-xs text-slate-400">
+          Current: {currentFileName}
+        </p>
+      ) : null}
+
+      {errorMsg ? <p className="text-sm text-red-500">{errorMsg}</p> : null}
+
+      {successMsg ? (
+        <p className="text-sm text-green-600">{successMsg}</p>
+      ) : null}
+
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={handleUpload}
+          disabled={uploading || items.length === 0}
+          className="w-full rounded-xl bg-blue-600 py-3 text-white disabled:opacity-50"
+        >
+          {uploading ? 'Uploading...' : 'Start Upload'}
+        </button>
+
+        {items.some(
+          (item) => item.status === 'queued' || item.status === 'done'
+        ) ? (
+          <button
+            type="button"
+            onClick={clearCompleted}
+            disabled={uploading}
+            className="w-full rounded-xl bg-slate-100 py-3 text-sm font-semibold text-slate-600 disabled:opacity-50"
+          >
+            Clear completed
+          </button>
+        ) : null}
+      </div>
+    </div>
   )
 }

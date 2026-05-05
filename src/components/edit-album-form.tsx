@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import IconButton from '@/components/icon-button'
 
 type Props = {
   albumId: string
@@ -67,14 +68,17 @@ export default function EditAlbumForm({
   return (
     <>
       {iconOnly ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          title="Edit Album"
-          className="rounded-full bg-slate-100 p-2 text-sm text-slate-700 hover:bg-slate-200"
-        >
-          ✏️
-        </button>
+        <IconButton
+  icon="pen"                 // ใช้ public/icons/edit.svg
+  title="Edit Album"
+  onClick={() => setOpen(true)}
+  variant="ghost"
+  size="sm"
+  className="rounded-full bg-slate-100 hover:bg-slate-200 p-0"
+  iconClassName="w-6 h-6 opacity-80"
+  
+
+/>
       ) : (
         <button
           type="button"
@@ -86,7 +90,7 @@ export default function EditAlbumForm({
       )}
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-4 pt-10 sm:items-center">
+        <div className="fixed inset-0 flex items-start justify-center pt-[12vh] sm:pt-[14vh]">
           <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-slate-900">

@@ -41,7 +41,7 @@ export default function SignupPage() {
   return (
     <main className="min-h-screen bg-white px-6 py-10">
       <div className="mx-auto max-w-md pt-16">
-        <h1 className="text-4xl font-bold text-slate-900">Create your Racky account</h1>
+        <h1 className="text-4xl font-bold text-slate-900">Create your Ciiya account</h1>
         <p className="mt-3 text-slate-500">
           Start managing albums and sharing photos with clients.
         </p>

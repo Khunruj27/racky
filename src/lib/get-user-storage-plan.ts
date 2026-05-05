@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
-export const DEFAULT_FREE_STORAGE_BYTES = 3 * 1024 * 1024 * 1024
+export const DEFAULT_FREE_STORAGE_BYTES = 5 * 1024 * 1024 * 1024
 
 export async function getUserStoragePlan(userId: string) {
   const supabase = await createServerSupabaseClient()
@@ -43,7 +43,7 @@ export async function getUserStoragePlan(userId: string) {
     .maybeSingle()
 
   return {
-    planName: freePlan?.name || 'Free 3GB',
+    planName: freePlan?.name || 'Free 5GB',
     storageLimitBytes: Number(
       freePlan?.storage_limit_bytes || DEFAULT_FREE_STORAGE_BYTES
     ),

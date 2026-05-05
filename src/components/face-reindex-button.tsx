@@ -1,0 +1,145 @@
+'use client'
+
+import { useState } from 'react'
+
+type Photo = {
+  id: string
+  public_url: string
+  preview_url?: string | null
+  thumbnail_url?: string | null
+  filename?: string | null
+}
+
+type Props = {
+  albumId: string
+  photos: Photo[]
+}
+
+let modelsLoaded = false
+
+async function loadFaceModels() {
+  if (typeof window === 'undefined') {
+    throw new Error('Face API must run on client')
+  }
+
+  const faceapi = await import('@vladmandic/face-api')
+
+  if (modelsLoaded) return faceapi
+
+  await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
+  await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
+  await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+
+  modelsLoaded = true
+  return faceapi
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Image load failed'))
+    img.src = src
+  })
+}
+
+export default function FaceReindexButton({ albumId, photos }: Props) {
+  const [running, setRunning] = useState(false)
+  const [done, setDone] = useState(0)
+  const [facesFound, setFacesFound] = useState(0)
+
+  async function handleScan() {
+    if (running) return
+
+    setRunning(true)
+    setDone(0)
+    setFacesFound(0)
+
+    try {
+      const faceapi = await loadFaceModels()
+
+      for (let i = 0; i < photos.length; i += 1) {
+        const photo = photos[i]
+        const imageUrl = photo.preview_url || photo.public_url
+
+        if (!imageUrl) {
+          setDone(i + 1)
+          continue
+        }
+
+        try {
+          const img = await loadImage(imageUrl)
+
+          const detections = await faceapi
+            .detectAllFaces(
+              img,
+              new faceapi.TinyFaceDetectorOptions({
+                inputSize: 512,
+                scoreThreshold: 0.45,
+              })
+            )
+            .withFaceLandmarks()
+            .withFaceDescriptors()
+
+          const faces = detections.map((result: any) => {
+            const box = result.detection.box
+
+            return {
+              embedding: Array.from(result.descriptor),
+              box: {
+                x: box.x,
+                y: box.y,
+                width: box.width,
+                height: box.height,
+              },
+              confidence: result.detection.score,
+            }
+          })
+
+          const res = await fetch('/api/faces/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              albumId,
+              photoId: photo.id,
+              faces,
+            }),
+          })
+
+          if (!res.ok) {
+            const text = await res.text()
+            console.error('Save faces failed:', text)
+          }
+
+          setFacesFound((value) => value + faces.length)
+        } catch (error) {
+          console.error('Scan photo failed:', error)
+        }
+
+        setDone(i + 1)
+      }
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={handleScan}
+        disabled={running || photos.length === 0}
+        className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+      >
+        {running ? `Scanning ${done}/${photos.length}` : 'Scan Faces'}
+      </button>
+
+      {running ? (
+        <p className="text-[11px] text-slate-400">
+          Found {facesFound} faces
+        </p>
+      ) : null}
+    </div>
+  )
+}

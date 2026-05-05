@@ -1,71 +1,88 @@
 'use client'
 
-import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
-export default function CreateAlbumForm() {
+type Props = {
+  onSuccess?: () => void
+}
+
+export default function CreateAlbumForm({ onSuccess }: Props) {
   const router = useRouter()
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
-  const [errorMsg, setErrorMsg] = useState('')
+  const [error, setError] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setErrorMsg('')
+  async function handleCreate() {
+    setError('')
 
-    const res = await fetch('/api/albums', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description }),
-    })
-
-    const data = await res.json()
-
-    setLoading(false)
-
-    if (!res.ok) {
-      setErrorMsg(data.error || 'Something went wrong')
+    if (!title.trim()) {
+      setError('Please enter album title')
       return
     }
 
-    setTitle('')
-    setDescription('')
-    router.refresh()
+    try {
+      setLoading(true)
+
+      const res = await fetch('/api/albums/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description,
+        }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        setError(data?.error || 'Create album failed')
+        return
+      }
+
+      setTitle('')
+      setDescription('')
+
+      onSuccess?.()
+      router.refresh()
+    } catch {
+      setError('Create album failed')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-3xl bg-white p-4 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">Create Album</h2>
+    <div className="space-y-3 p-3">
+      <input
+        type="text"
+        placeholder="Album title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        disabled={loading}
+        className="w-full rounded-xl border border-slate-200 p-3"
+      />
 
-      <div className="mt-4 space-y-3">
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Album title"
-          className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none"
-        />
+      <textarea
+        placeholder="Album description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        disabled={loading}
+        className="w-full rounded-xl border border-slate-200 p-3"
+      />
 
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Album description"
-          className="min-h-[100px] w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none"
-        />
+      {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
-        {errorMsg ? <p className="text-sm text-red-500">{errorMsg}</p> : null}
-
-        <button
-          type="submit"
-          disabled={loading || !title.trim()}
-          className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-white disabled:opacity-50"
-        >
-          {loading ? 'Creating...' : 'Create Album'}
-        </button>
-      </div>
-    </form>
+      <button
+        type="button"
+        onClick={handleCreate}
+        disabled={loading}
+        className="w-full rounded-xl bg-blue-600 py-3 text-white disabled:opacity-50"
+      >
+        {loading ? 'Creating...' : 'Create Album'}
+      </button>
+    </div>
   )
 }

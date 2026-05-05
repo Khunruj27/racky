@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import Cropper from 'react-easy-crop'
 import { useRouter } from 'next/navigation'
+import AppIcon from '@/components/app-icon'
 
 type Props = {
   albumId: string
@@ -158,9 +159,14 @@ export default function CoverCropUpload({
       {iconOnly ? (
         <label
           title="Upload Cover Image"
-          className="cursor-pointer rounded-full bg-blue-100 p-2 text-sm text-blue-600 hover:bg-blue-200"
+          className="rounded-full bg-slate-100 hover:bg-slate-200 p-0"
         >
-          📷
+         <AppIcon
+      name="panorama"
+      size={24}                // 🔥 ปรับขนาดตรงนี้
+      className="opacity-80"
+      
+    />
           <input
             type="file"
             accept="image/*,.jpg,.jpeg,.png"
@@ -188,7 +194,7 @@ export default function CoverCropUpload({
       )}
 
       {open && imageSrc ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[12vh] sm:pt-[14vh]">
           <div className="w-full max-w-3xl rounded-3xl bg-white p-4 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <div>

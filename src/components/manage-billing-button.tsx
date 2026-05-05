@@ -1,40 +1,34 @@
 'use client'
 
-import { useState } from 'react'
-
 export default function ManageBillingButton() {
-  const [loading, setLoading] = useState(false)
+  async function handleClick() {
+    const res = await fetch('/api/stripe/billing-portal', {
+      method: 'POST',
+    })
 
-  async function openPortal() {
-    try {
-      setLoading(true)
+    const data = await res.json()
 
-      const res = await fetch('/api/stripe/portal', {
-        method: 'POST',
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to open billing portal')
-      }
-
+    if (data.url) {
       window.location.href = data.url
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to open billing portal')
-    } finally {
-      setLoading(false)
+    } else {
+      alert('Billing not available')
     }
   }
 
   return (
     <button
-      type="button"
-      onClick={openPortal}
-      disabled={loading}
-      className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+      onClick={handleClick}
+      className="
+        rounded-full 
+        border border-slate-300
+        px-4 py-2 
+        text-sm font-semibold text-slate-700
+        bg-white
+        hover:bg-slate-50
+        transition
+      "
     >
-      {loading ? 'Opening...' : 'Manage Billing'}
+      Manage Billing
     </button>
   )
 }

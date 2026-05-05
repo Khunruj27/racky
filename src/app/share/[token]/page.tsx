@@ -2,6 +2,11 @@ import PublicGallery from '@/components/public-gallery'
 import ShareViewTracker from '@/components/share-view-tracker'
 import PublicTopBar from '@/components/public-top-bar'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import PublicGalleryRealtime from '@/components/public-gallery-realtime'
+import PublicFloatingActions from '@/components/public-floating-actions'
+import ScrollToTopButton from '@/components/scroll-to-top-button'
+import AppIcon from '@/components/app-icon'
+
 
 type PageProps = {
   params: Promise<{ token: string }>
@@ -50,6 +55,7 @@ export default async function SharePage({ params }: PageProps) {
   return (
     <main className="min-h-screen bg-[#f6f7fb]">
       <ShareViewTracker token={token} />
+      <PublicGalleryRealtime albumId={album.id} />
 
       <section className="relative overflow-hidden px-4 pb-24 pt-10 text-white">
         <div className="absolute inset-0">
@@ -71,7 +77,7 @@ export default async function SharePage({ params }: PageProps) {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.28em] text-white/70">
-                Racky Gallery
+                Ciiya Photosharing
               </p>
 
               <h1 className="mt-3 text-3xl font-bold leading-tight drop-shadow-sm">
@@ -104,7 +110,8 @@ export default async function SharePage({ params }: PageProps) {
         </div>
       </section>
 
-      <section className="-mt-14 px-4 pb-10">
+
+      <section className="px-4 pt-4">
         <div className="mx-auto max-w-md space-y-4">
           <PublicTopBar shareToken={token} count={photoCount} />
 
@@ -121,13 +128,14 @@ export default async function SharePage({ params }: PageProps) {
           )}
 
           <div className="rounded-[32px] bg-white p-5 text-center shadow-[0_10px_30px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
-            <p className="text-sm font-semibold text-slate-900">Powered by Racky</p>
+            <p className="text-sm font-semibold text-slate-900">Powered by Ciiya</p>
             <p className="mt-1 text-xs text-slate-500">
-              Fast photo sharing for photographers and clients
+              Photo sharing Flashform
             </p>
           </div>
         </div>
       </section>
-    </main>
+     <ScrollToTopButton />
+    </main> 
   )
 }

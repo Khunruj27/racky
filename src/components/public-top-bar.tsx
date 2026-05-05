@@ -43,15 +43,15 @@ export default function PublicTopBar({
     <div className="rounded-[32px] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
       <div className="flex flex-wrap items-center gap-2">
 
-        {/* Live */}
-        <button className="rounded-full bg-blue-600 px-5 py-2.5 text-sm text-white">
-          Live
-        </button>
-
-        {/* Trending */}
-        <button className="rounded-full bg-slate-100 px-5 py-2.5 text-sm">
-          Trending 🔥
-        </button>
+       {/* Facebook */}
+        <a
+          href={fbUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-full bg-blue-100 px-4 py-2.5 text-sm text-blue-600"
+        >
+          Facebook
+        </a>
 
         {/* LINE */}
         <a
@@ -63,15 +63,7 @@ export default function PublicTopBar({
           LINE
         </a>
 
-        {/* Facebook */}
-        <a
-          href={fbUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-full bg-blue-100 px-4 py-2.5 text-sm text-blue-600"
-        >
-          Facebook
-        </a>
+        
 
         {/* Copy */}
         <button

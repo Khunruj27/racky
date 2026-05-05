@@ -1,47 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { getUserStoragePlan } from '@/lib/get-user-storage-plan'
+import { createClient } from '@supabase/supabase-js'
 
-export const runtime = 'nodejs' // 🔥 กัน edge runtime พัง
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
-const FREE_LIMIT_BYTES = 3 * 1024 * 1024 * 1024
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!url || !key) {
+    return null
+  }
+
+  return createClient(url, key, {
+    auth: { persistSession: false },
+  })
+}
 
 async function getStorageUsageAndLimit(userId: string) {
   const supabase = await createServerSupabaseClient()
 
-  const { data: storageRows = [], error: storageError } = await supabase
+  const { data, error } = await supabase
     .from('photos')
     .select('file_size_bytes')
     .eq('owner_id', userId)
 
-  if (storageError) {
-    throw new Error(storageError.message)
-  }
+  if (error) throw new Error(error.message)
 
-  const usedBytes = (storageRows || []).reduce(
-    (sum, row: any) => sum + Number(row?.file_size_bytes || 0),
+  const usedBytes = (data ?? []).reduce(
+    (sum, row) => sum + Number(row.file_size_bytes || 0),
     0
   )
 
-  const { data: currentSubscription } = await supabase
-    .from('subscriptions')
-    .select(`
-      id,
-      status,
-      plan:plans(storage_limit_bytes)
-    `)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { storageLimitBytes } = await getUserStoragePlan(userId)
 
-  const plan = Array.isArray(currentSubscription?.plan)
-    ? currentSubscription?.plan[0]
-    : currentSubscription?.plan
+  return {
+    usedBytes,
+    limitBytes: Number(storageLimitBytes || 5 * 1024 * 1024 * 1024),
+  }
+}
 
-  const limitBytes = Number(plan?.storage_limit_bytes || FREE_LIMIT_BYTES)
+function getSafeFileName(fileName: string) {
+  const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg'
+  const baseName = fileName.replace(/\.[^/.]+$/, '')
+  const safeBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, '-')
 
-  return { usedBytes, limitBytes }
+  return `${Date.now()}-${safeBaseName || 'photo'}.${ext}`
+}
+
+function getSafePresetName(fileName: string) {
+  const baseName = fileName.replace(/\.[^/.]+$/, '')
+  const safeBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, '-')
+
+  return `${Date.now()}-${safeBaseName || 'preset'}.xmp`
 }
 
 export async function POST(req: NextRequest) {
@@ -59,8 +72,9 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData()
 
     const file = formData.get('file') as File | null
+    const presetFile = formData.get('presetFile') as File | null
     const albumId = String(formData.get('albumId') || '').trim()
-    const size = String(formData.get('size') || 'original').toLowerCase()
+    const size = String(formData.get('size') || 'original').trim().toLowerCase()
     const categoryIdRaw = String(formData.get('categoryId') || '').trim()
     const categoryId = categoryIdRaw || null
     const isCover = String(formData.get('isCover') || '') === 'true'
@@ -72,11 +86,12 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const fileNameLower = file.name.toLowerCase()
     const isImage =
       file.type.startsWith('image/') ||
-      file.name.toLowerCase().endsWith('.jpg') ||
-      file.name.toLowerCase().endsWith('.jpeg') ||
-      file.name.toLowerCase().endsWith('.png')
+      fileNameLower.endsWith('.jpg') ||
+      fileNameLower.endsWith('.jpeg') ||
+      fileNameLower.endsWith('.png')
 
     if (!isImage) {
       return NextResponse.json(
@@ -96,48 +111,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Album not found' }, { status: 404 })
     }
 
-    // 🔥 generate filename
-    const baseName = file.name.replace(/\.[^/.]+$/, '')
-    const safeBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, '-')
-    const fileName = `${Date.now()}-${safeBaseName}.jpg`
-
-    // 🔥 convert file -> buffer
-    const arrayBuffer = await file.arrayBuffer()
-    let buffer = Buffer.from(new Uint8Array(arrayBuffer))
-
-    // 🔥 resize (non-cover only)
-    if (!isCover) {
-      const sharpModule = await import('sharp')
-      const sharp = sharpModule.default
-
-      let width: number | null = null
-
-      if (size === 'sd') width = 2000
-      if (size === 'hd') width = 3000
-      if (size === 'uhd') width = 4000
-
-      let processed: Buffer
-
-      if (width) {
-        processed = await sharp(buffer)
-          .rotate()
-          .resize({ width, withoutEnlargement: true })
-          .jpeg({ quality: 85 })
-          .toBuffer()
-      } else {
-        processed = await sharp(buffer)
-          .rotate()
-          .jpeg({ quality: 90 })
-          .toBuffer()
-      }
-
-      // 🔥 FIX TYPE ERROR (สำคัญมาก)
-      buffer = Buffer.from(processed)
-    }
-
+    const buffer = Buffer.from(await file.arrayBuffer())
     const fileSizeBytes = buffer.length
 
-    // 🔥 check storage limit
     if (!isCover) {
       const { usedBytes, limitBytes } = await getStorageUsageAndLimit(user.id)
 
@@ -154,14 +130,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const fileName = getSafeFileName(file.name)
+
     const storagePath = isCover
       ? `${user.id}/${albumId}/cover/${fileName}`
-      : `${user.id}/${albumId}/photos/${fileName}`
+      : `${user.id}/${albumId}/original/${fileName}`
 
     const { error: uploadError } = await supabase.storage
       .from('albums')
       .upload(storagePath, buffer, {
-        contentType: 'image/jpeg',
+        contentType: file.type || 'image/jpeg',
         upsert: false,
       })
 
@@ -175,18 +153,45 @@ export async function POST(req: NextRequest) {
 
     const publicUrl = publicUrlData.publicUrl
 
-    // 🔥 set cover
     if (isCover) {
-      await supabase
+      const { error: coverError } = await supabase
         .from('albums')
         .update({ cover_url: publicUrl })
         .eq('id', albumId)
         .eq('owner_id', user.id)
 
-      return NextResponse.json({ success: true, coverUrl: publicUrl })
+      if (coverError) {
+        return NextResponse.json({ error: coverError.message }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        coverUrl: publicUrl,
+      })
     }
 
-    // 🔥 insert photo
+    let presetPath: string | null = null
+    let presetUploadError: string | null = null
+
+    if (presetFile && presetFile.name.toLowerCase().endsWith('.xmp')) {
+      const presetBuffer = Buffer.from(await presetFile.arrayBuffer())
+      const presetName = getSafePresetName(presetFile.name)
+      presetPath = `${user.id}/${albumId}/presets/${presetName}`
+
+      const { error: presetError } = await supabase.storage
+        .from('albums')
+        .upload(presetPath, presetBuffer, {
+          contentType: 'application/octet-stream',
+          upsert: true,
+        })
+
+      if (presetError) {
+        presetUploadError = presetError.message
+        presetPath = null
+        console.error('Preset upload error:', presetError.message)
+      }
+    }
+
     const { data: insertedPhoto, error: insertError } = await supabase
       .from('photos')
       .insert({
@@ -197,6 +202,9 @@ export async function POST(req: NextRequest) {
         public_url: publicUrl,
         category_id: categoryId,
         file_size_bytes: fileSizeBytes,
+        processing_status: 'pending',
+        processing_progress: 0,
+        original_path: storagePath,
       })
       .select('id, public_url')
       .single()
@@ -205,7 +213,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
-    // 🔥 auto set cover
     if (!album.cover_url && insertedPhoto?.public_url) {
       await supabase
         .from('albums')
@@ -214,14 +221,51 @@ export async function POST(req: NextRequest) {
         .eq('owner_id', user.id)
     }
 
+    let jobQueued = false
+    let jobError: string | null = null
+
+    if (insertedPhoto?.id) {
+      const supabaseAdmin = getSupabaseAdmin()
+
+      if (!supabaseAdmin) {
+        jobError = 'Missing SUPABASE_SERVICE_ROLE_KEY'
+        console.error(jobError)
+      } else {
+        const { error: queueError } = await supabaseAdmin
+          .from('photo_jobs')
+          .insert({
+            photo_id: insertedPhoto.id,
+            owner_id: user.id,
+            album_id: albumId,
+            original_path: storagePath,
+            size,
+            preset_path: presetPath,
+            status: 'pending',
+          })
+
+        if (queueError) {
+          jobError = queueError.message
+          console.error('Insert photo_jobs error:', queueError.message)
+        } else {
+          jobQueued = true
+          console.log('Job queued:', insertedPhoto.id)
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       publicUrl,
       photoId: insertedPhoto?.id ?? null,
       fileSizeBytes,
+      presetQueued: Boolean(presetPath),
+      presetUploadError,
+      processingStatus: jobQueued ? 'pending' : 'original_uploaded',
+      jobQueued,
+      jobError,
     })
   } catch (error) {
-    console.error('Upload error:', error)
+    console.error('Fast upload route error:', error)
 
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Upload failed' },
