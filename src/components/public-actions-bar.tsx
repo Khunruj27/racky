@@ -34,7 +34,7 @@ export default function PublicActionsBar({ shareToken }: Props) {
     if (typeof navigator !== 'undefined' && navigator.share) {
       navigator
         .share({
-          title: 'Racky Gallery',
+          title: 'Ciiya Gallery',
           text: 'Check out this photo album',
           url: shareUrl,
         })

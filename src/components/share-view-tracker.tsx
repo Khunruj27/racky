@@ -8,7 +8,7 @@ type Props = {
 
 export default function ShareViewTracker({ token }: Props) {
   useEffect(() => {
-    const key = `racky_viewed_${token}`
+    const key = `ciiya_viewed_${token}`
     const alreadyViewed = window.sessionStorage.getItem(key)
 
     if (alreadyViewed) return

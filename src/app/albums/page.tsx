@@ -121,6 +121,7 @@ export default async function AlbumsPage() {
       alt="Ciiya Logo"
       width={0}
       height={0}
+      priority
       className="h-12 w-auto"
     />
 </div>

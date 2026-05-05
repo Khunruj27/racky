@@ -42,7 +42,7 @@ export default function ShareActions({ shareToken }: Props) {
 
     const link = document.createElement('a')
     link.href = url
-    link.download = 'racky-share-qr.svg'
+    link.download = 'ciiya-share-qr.svg'
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
