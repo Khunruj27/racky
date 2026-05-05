@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('')
 
   useEffect(() => {
-    const savedEmail = window.localStorage.getItem('racky_remember_email')
+    const savedEmail = window.localStorage.getItem('ciiya_remember_email')
     if (savedEmail) {
       setEmail(savedEmail)
       setRememberMe(true)
@@ -41,9 +41,9 @@ export default function LoginPage() {
     }
 
     if (rememberMe) {
-      window.localStorage.setItem('racky_remember_email', email)
+      window.localStorage.setItem('ciiya_remember_email', email)
     } else {
-      window.localStorage.removeItem('racky_remember_email')
+      window.localStorage.removeItem('ciiya_remember_email')
     }
 
     router.push('/albums')

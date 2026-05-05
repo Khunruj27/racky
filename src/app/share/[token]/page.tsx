@@ -27,7 +27,7 @@ export default async function SharePage({ params }: PageProps) {
       <main className="min-h-screen bg-[#f6f7fb] px-4 py-10">
         <div className="mx-auto max-w-md rounded-[32px] bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
           <p className="text-xs uppercase tracking-[0.24em] text-slate-400">
-            Racky Gallery
+            Ciiya Gallery
           </p>
           <h1 className="mt-3 text-2xl font-bold text-slate-900">
             Album not found
