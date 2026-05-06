@@ -6,6 +6,8 @@ import PublicGalleryRealtime from '@/components/public-gallery-realtime'
 import PublicFloatingActions from '@/components/public-floating-actions'
 import ScrollToTopButton from '@/components/scroll-to-top-button'
 import AppIcon from '@/components/app-icon'
+import FaceSearchButton from '@/components/face-search-button'
+import ShareClient from '@/components/share-client'
 
 
 type PageProps = {
@@ -56,6 +58,7 @@ export default async function SharePage({ params }: PageProps) {
     <main className="min-h-screen bg-[#f6f7fb]">
       <ShareViewTracker token={token} />
       <PublicGalleryRealtime albumId={album.id} />
+     
 
       <section className="relative overflow-hidden px-4 pb-24 pt-10 text-white">
         <div className="absolute inset-0">
@@ -109,11 +112,12 @@ export default async function SharePage({ params }: PageProps) {
           </div>
         </div>
       </section>
-
+ <FaceSearchButton />
 
       <section className="px-4 pt-4">
         <div className="mx-auto max-w-md space-y-4">
           <PublicTopBar shareToken={token} count={photoCount} />
+          
 
           {photos && photos.length > 0 ? (
             <PublicGallery

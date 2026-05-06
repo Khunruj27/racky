@@ -46,7 +46,7 @@ function chunkArray<T>(items: T[], size: number) {
 }
 
 async function listAllStoragePaths(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   prefix: string
 ) {
   const allPaths: string[] = []
@@ -68,10 +68,10 @@ async function listAllStoragePaths(
     if (!files || files.length === 0) break
 
     allPaths.push(
-      ...files
-        .filter((file) => file.name)
-        .map((file) => `${prefix}/${file.name}`)
-    )
+  ...files
+    .filter((file: any) => file.name)
+    .map((file: any) => `${prefix}/${file.name}`)
+)
 
     if (files.length < LIST_LIMIT) break
 
