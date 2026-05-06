@@ -133,14 +133,10 @@ async function safeUpdatePhoto(
   photoId: string,
   payload: any
 ) {
-  await supabase
-    .from('photos')
-    .update({
-      ...payload,
-      processing_status: 'ready',
-      processing_progress: 100,
-    })
-    .eq('id', photoId)
+  await (supabase as any)
+  .from('photos')
+  .update(payload as any)
+  .eq('id', photoId)
 }
 
 async function processOneJob(job: any) {
