@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import PublicGallery from '@/components/public-gallery'
 
-
 type Photo = {
   id: string
   album_id: string
@@ -37,6 +36,12 @@ export default function PublicGalleryInfinite({
   const [hasMore, setHasMore] = useState(Boolean(initialCursor))
   const loaderRef = useRef<HTMLDivElement | null>(null)
 
+  useEffect(() => {
+    setPhotos(initialPhotos)
+    setCursor(initialCursor)
+    setHasMore(Boolean(initialCursor))
+  }, [initialPhotos, initialCursor])
+
   async function loadMore() {
     if (loading || !hasMore || !cursor) return
 
@@ -56,7 +61,17 @@ export default function PublicGalleryInfinite({
         throw new Error(data?.error || 'Load more failed')
       }
 
-      setPhotos((prev) => [...prev, ...(data.photos || [])])
+      const nextPhotos = data.photos || []
+
+      setPhotos((prev) => {
+        const existing = new Set(prev.map((photo) => photo.id))
+        const unique = nextPhotos.filter(
+          (photo: Photo) => !existing.has(photo.id)
+        )
+
+        return [...prev, ...unique]
+      })
+
       setCursor(data.nextCursor)
       setHasMore(Boolean(data.hasMore))
     } catch (error) {
@@ -78,7 +93,7 @@ export default function PublicGalleryInfinite({
         }
       },
       {
-        rootMargin: '600px',
+        rootMargin: '700px',
       }
     )
 
@@ -89,22 +104,14 @@ export default function PublicGalleryInfinite({
 
   return (
     <>
-     <PublicGallery
-  photos={photos.filter((photo) => Boolean(photo.public_url))}
-  totalCount={totalCount}
-  albumTitle={albumTitle}
-  albumId={albumId}
-/>
+      <PublicGallery
+        photos={photos.filter((photo) => Boolean(photo.public_url))}
+        totalCount={totalCount}
+        albumTitle={albumTitle}
+        albumId={albumId}
+      />
 
-      <div ref={loaderRef} className="py-8 text-center">
-        {loading ? (
-          <p className="text-sm text-slate-400">Loading more photos...</p>
-        ) : hasMore ? (
-          <p className="text-xs text-slate-300">Scroll to load more</p>
-        ) : (
-          <p className="text-xs text-slate-300">End of album</p>
-        )}
-      </div>
+      <div ref={loaderRef} className="h-10" />
     </>
   )
 }

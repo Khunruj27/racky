@@ -267,6 +267,8 @@ export default function PublicGallery({
                 <div className="mx-auto mt-2 h-1 w-8 rounded-full bg-[#2F6BFF]" />
               ) : null}
             </button>
+
+          
           </div>
 
           <div className="flex shrink-0 items-center gap-1 rounded-full bg-slate-100 p-1">
@@ -336,18 +338,7 @@ export default function PublicGallery({
         })}
       </div>
 
-      {hasMore ? (
-        <div className="flex justify-center py-8">
-          <button
-            type="button"
-            onClick={loadMore}
-            disabled={loadingMore}
-            className="rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-sm transition active:scale-95 disabled:opacity-50"
-          >
-            {loadingMore ? 'Loading...' : 'Load More'}
-          </button>
-        </div>
-      ) : null}
+      
 
       {activeIndex !== null && activePhoto ? (
         <div className="fixed inset-0 z-50 bg-black text-white">

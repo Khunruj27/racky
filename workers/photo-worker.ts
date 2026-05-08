@@ -29,8 +29,8 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     autoRefreshToken: false,
   },
   realtime: {
-  transport: WebSocket as any,
-},
+    transport: WebSocket as any,
+  },
 })
 
 const { Canvas, Image, ImageData } = canvas
@@ -45,7 +45,6 @@ let faceModelsLoaded = false
 
 console.log('Photo worker started')
 console.log('[Worker] FACE_SCAN_ENABLED =', process.env.FACE_SCAN_ENABLED)
-console.log('[Worker] FACE_SCAN_ENABLED parsed =', FACE_SCAN_ENABLED)
 console.log('[Worker] NODE_VERSION =', process.version)
 
 function sleep(ms: number) {
@@ -57,17 +56,8 @@ async function loadFaceModels() {
 
   const modelPath = path.join(process.cwd(), 'public', 'models')
 
-  console.log('[FaceScan] model path:', modelPath)
-  console.log('[FaceScan] loading tinyFaceDetector...')
-
   await faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath)
-
-  console.log('[FaceScan] loading faceLandmark68Net...')
-
   await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath)
-
-  console.log('[FaceScan] loading faceRecognitionNet...')
-
   await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
 
   faceModelsLoaded = true
@@ -152,33 +142,20 @@ async function generateResizeBuffer(buffer: Buffer, width: number, quality = 86)
 }
 
 async function scanFaces(buffer: Buffer) {
-  console.log('[FaceScan] loading models...')
-
   await loadFaceModels()
-
-  console.log('[FaceScan] models loaded')
-  console.log('[FaceScan] image buffer size:', buffer.length)
 
   const img = await canvas.loadImage(buffer)
 
-  console.log('[FaceScan] image loaded')
-  console.log('[FaceScan] image width:', img.width)
-  console.log('[FaceScan] image height:', img.height)
-
-  const options = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 512,
-    scoreThreshold: 0.45,
-  })
-
-  console.log('[FaceScan] detector options ready')
-
   const detections = await faceapi
-    .detectAllFaces(img as any, options)
+    .detectAllFaces(
+      img as any,
+      new faceapi.TinyFaceDetectorOptions({
+        inputSize: 512,
+        scoreThreshold: 0.45,
+      })
+    )
     .withFaceLandmarks()
     .withFaceDescriptors()
-
-  console.log('[FaceScan] detections complete')
-  console.log('[FaceScan] faces found:', detections.length)
 
   return detections
 }
@@ -211,6 +188,7 @@ async function claimJob(job: any) {
     .update({
       status: 'processing',
       started_at: new Date().toISOString(),
+      finished_at: null,
       error: null,
     })
     .eq('id', job.id)
@@ -230,7 +208,7 @@ async function claimJob(job: any) {
 }
 
 async function markJobDone(job: any) {
-  await supabase
+  const { error } = await supabase
     .from('photo_jobs')
     .update({
       status: 'done',
@@ -238,6 +216,10 @@ async function markJobDone(job: any) {
       error: null,
     })
     .eq('id', job.id)
+
+  if (error) {
+    console.error('[Worker] mark job done failed:', error.message)
+  }
 }
 
 async function markJobFailedOrRetry(job: any, message: string) {
@@ -292,20 +274,12 @@ async function recoverStaleJobs() {
 
 async function runFaceScanSafe(job: any, imageBuffer: Buffer) {
   try {
-    console.log(`[FaceScan] requested for photo ${job.photo_id}`)
-    console.log('[FaceScan] FACE_SCAN_ENABLED raw =', process.env.FACE_SCAN_ENABLED)
-    console.log('[FaceScan] FACE_SCAN_ENABLED parsed =', FACE_SCAN_ENABLED)
-
     await updateFaceProgress(job.photo_id, 10, 'processing', {
       face_scan_error: null,
       faces_count: 0,
     })
 
-    console.log('[FaceScan] deleting old faces...')
-
     await supabase.from('photo_faces').delete().eq('photo_id', job.photo_id)
-
-    console.log('[FaceScan] old faces deleted')
 
     await updateFaceProgress(job.photo_id, 30, 'processing')
 
@@ -319,19 +293,11 @@ async function runFaceScanSafe(job: any, imageBuffer: Buffer) {
       return
     }
 
-    console.log(`[FaceScan] start scan ${job.photo_id}`)
-
     await updateFaceProgress(job.photo_id, 50, 'processing')
-
-    console.log('[FaceScan] calling scanFaces()')
 
     const detections = await scanFaces(imageBuffer)
 
-    console.log('[FaceScan] scanFaces() done')
-
     await updateFaceProgress(job.photo_id, 80, 'processing')
-
-    console.log('[FaceScan] preparing rows...')
 
     if (detections.length > 0) {
       const rows = detections.map((detection: any, index: number) => ({
@@ -339,25 +305,17 @@ async function runFaceScanSafe(job: any, imageBuffer: Buffer) {
         album_id: job.album_id,
         owner_id: job.owner_id,
         face_index: index,
-
         box_x: detection.detection.box.x,
         box_y: detection.detection.box.y,
         box_width: detection.detection.box.width,
         box_height: detection.detection.box.height,
-
         descriptor: Array.from(detection.descriptor),
         person_cluster_id: null,
       }))
 
-      console.log('[FaceScan] inserting rows:', rows.length)
-
       const { error } = await supabase.from('photo_faces').insert(rows)
 
-      console.log('[FaceScan] insert complete')
-
       if (error) throw new Error(error.message)
-    } else {
-      console.log('[FaceScan] no faces detected')
     }
 
     await updateFaceProgress(job.photo_id, 100, 'done', {
@@ -365,7 +323,7 @@ async function runFaceScanSafe(job: any, imageBuffer: Buffer) {
       face_scan_error: null,
     })
 
-    console.log(`[Worker] detected ${detections.length} faces in ${job.photo_id}`)
+    console.log(`[Worker] face scan done ${job.photo_id}: ${detections.length} faces`)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Face scan failed'
 
@@ -380,10 +338,6 @@ async function runFaceScanSafe(job: any, imageBuffer: Buffer) {
     })
 
     console.error(`[Worker] face scan failed ${job.photo_id}:`, message)
-
-    if (error instanceof Error) {
-      console.error(error.stack)
-    }
   }
 }
 
@@ -512,7 +466,7 @@ async function processPhotoJob(job: any) {
             ? 0
             : hdBuffer.length
 
-    const fullPayload = {
+    const finalPhotoPayload = {
       public_url: selected.url,
       storage_path: selected.path,
       preview_path: selected.path,
@@ -530,8 +484,8 @@ async function processPhotoJob(job: any) {
       preview_size_bytes: processedBytes,
       thumbnail_size_bytes: thumbBuffer.length,
       file_size_bytes: originalSizeBytes + processedBytes,
-      processing_status: 'processing',
-      processing_progress: 90,
+      processing_status: 'done',
+      processing_progress: 100,
       face_scan_status: 'pending',
       face_scan_progress: 0,
       faces_count: 0,
@@ -540,7 +494,7 @@ async function processPhotoJob(job: any) {
 
     const { error: updateError } = await supabase
       .from('photos')
-      .update(fullPayload)
+      .update(finalPhotoPayload)
       .eq('id', job.photo_id)
 
     if (updateError) {
@@ -558,21 +512,22 @@ async function processPhotoJob(job: any) {
         thumbnail_size_bytes: thumbBuffer.length,
         file_size_bytes:
           originalSizeBytes + selectedProcessedBytes + thumbBuffer.length,
-        processing_status: 'processing',
-        processing_progress: 90,
+        processing_status: 'done',
+        processing_progress: 100,
+        face_scan_status: 'pending',
+        face_scan_progress: 0,
+        faces_count: 0,
+        face_scan_error: null,
       })
     }
 
-    await updatePhoto(job.photo_id, {
-      processing_status: 'done',
-      processing_progress: 100,
-    })
+    await markJobDone(job)
+
+    console.log(`[Worker] resize done ${job.id}`)
 
     await runFaceScanSafe(job, hdBuffer)
 
-    await markJobDone(job)
-
-    console.log(`[Worker] job done ${job.id}`)
+    console.log(`[Worker] job complete ${job.id}`)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Process failed'
 
